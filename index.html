@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Digital Suporte - Notas Pro</title>
+    <style>
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background: #000; color: #fff; margin: 0; padding: 10px; 
+            min-height: 100vh; padding-bottom: 160px;
+        }
+        
+        .titulo-editavel { 
+            background: #f1c40f; color: #000; padding: 15px; border-radius: 12px;
+            font-size: 18px; font-weight: 900; text-align: center; margin-bottom: 15px;
+            outline: none; text-transform: uppercase; border: 2px solid #fff;
+        }
+
+        .linha { 
+            display: flex; align-items: center; background: #1a1a1a; 
+            border-radius: 8px; padding: 12px; margin-bottom: 8px;
+            border: 1px solid #333; position: relative;
+            transition: background 0.3s;
+        }
+
+        .linha:active { background: #333; } /* Feedback visual ao tocar */
+
+        .item-texto { 
+            flex: 1; font-size: 16px; color: #fff; outline: none; 
+            min-height: 20px; padding-right: 5px;
+        }
+
+        .status-btn {
+            background: #222; color: #f1c40f; padding: 8px; border-radius: 6px;
+            font-size: 11px; font-weight: 800; min-width: 100px; text-align: center;
+            border: 1px solid #f1c40f; cursor: pointer;
+        }
+
+        .menu-status {
+            display: none; position: absolute; right: 10px; top: 50px;
+            background: #222; border: 2px solid #f1c40f; border-radius: 10px;
+            z-index: 100; width: 180px; box-shadow: 0 10px 30px rgba(0,0,0,1);
+        }
+
+        .menu-status.ativo { display: block; }
+
+        .opcao-status {
+            display: flex; align-items: center; padding: 12px;
+            border-bottom: 1px solid #333; gap: 10px;
+        }
+
+        .simbolo { font-size: 16px; cursor: pointer; padding: 5px; background: #333; border-radius: 4px; }
+        .texto-opcao { 
+            flex: 1; outline: none; font-size: 13px; font-weight: 700; 
+            color: #f1c40f; min-height: 15px;
+        }
+
+        .barra-acoes {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: #111; padding: 15px; display: grid;
+            grid-template-columns: 1fr 1fr; gap: 10px; 
+            border-top: 2px solid #f1c40f; z-index: 1000;
+        }
+
+        .btn {
+            border: none; border-radius: 8px; padding: 14px;
+            font-weight: 900; font-size: 11px; text-transform: uppercase;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+
+        .btn-add { background: #333; color: #f1c40f; grid-column: span 2; border: 1px dashed #f1c40f; }
+        .btn-salvar { background: #2ecc71; color: #fff; }
+        .btn-whats { background: #25d366; color: #fff; }
+        .btn-limpar { background: #e74c3c; color: #fff; grid-column: span 2; margin-top: 5px; padding: 8px; font-size: 10px; opacity: 0.7; }
+
+        [contenteditable=true]:empty:before {
+            content: attr(placeholder);
+            color: #444;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="cabecalho" class="titulo-editavel" contenteditable="true" placeholder="TÍTULO">NOTAS DA SEMANA</div>
+
+    <div id="listaNotas"></div>
+
+    <div class="barra-acoes">
+        <button class="btn btn-add" onclick="adicionarLinha()">➕ Adicionar Linhas</button>
+        <button class="btn btn-salvar" onclick="salvarDados()">💾 Salvar</button>
+        <button class="btn btn-whats" onclick="enviarWhatsApp()">📱 WhatsApp</button>
+        <button class="btn btn-limpar" onclick="limparTudo()">🗑️ Zerar Tudo</button>
+    </div>
+
+    <script>
+        const listaEl = document.getElementById('listaNotas');
+        const tituloEl = document.getElementById('cabecalho');
+        let timerPressionar;
+
+        function criarEstruturaLinha(id, texto = "", statusAtual = "SELECIONE", op1 = "OK", op2 = "PENDENTE", op3 = "AVALIAR") {
+            const div = document.createElement('div');
+            div.className = 'linha';
+            div.id = `bloco_${id}`;
+            
+            // Eventos para detectar "Segurar" (Long Press)
+            div.onmousedown = () => iniciarContagem(div);
+            div.onmouseup = () => cancelarContagem();
+            div.ontouchstart = () => iniciarContagem(div);
+            div.ontouchend = () => cancelarContagem();
+
+            div.innerHTML = `
+                <div class="item-texto" contenteditable="true" id="texto_${id}" placeholder="Descreva o item...">${texto}</div>
+                <div class="status-btn" onclick="toggleMenu(${id})" id="btn_status_${id}">${statusAtual}</div>
+                
+                <div class="menu-status" id="menu_${id}">
+                    <div class="opcao-status">
+                        <span class="simbolo" onclick="selecionarOpcao(${id}, '✅', 'op1_${id}')">✅</span> 
+                        <div class="texto-opcao" contenteditable="true" id="op1_${id}">${op1}</div>
+                    </div>
+                    <div class="opcao-status">
+                        <span class="simbolo" onclick="selecionarOpcao(${id}, '❌', 'op2_${id}')">❌</span> 
+                        <div class="texto-opcao" contenteditable="true" id="op2_${id}">${op2}</div>
+                    </div>
+                    <div class="opcao-status">
+                        <span class="simbolo" onclick="selecionarOpcao(${id}, '⚠️', 'op3_${id}')">⚠️</span> 
+                        <div class="texto-opcao" contenteditable="true" id="op3_${id}">${op3}</div>
+                    </div>
+                </div>
+            `;
+            listaEl.appendChild(div);
+        }
+
+        // Funções de Deletar Linha
+        function iniciarContagem(elemento) {
+            timerPressionar = setTimeout(() => {
+                if(confirm("Deseja excluir esta linha permanentemente?")) {
+                    elemento.remove();
+                    salvarDados(); // Salva automaticamente após deletar
+                }
+            }, 800); // 0.8 segundos segurando
+        }
+
+        function cancelarContagem() {
+            clearTimeout(timerPressionar);
+        }
+
+        function toggleMenu(id) {
+            const menu = document.getElementById(`menu_${id}`);
+            const estaAtivo = menu.classList.contains('ativo');
+            document.querySelectorAll('.menu-status').forEach(m => m.classList.remove('ativo'));
+            if(!estaAtivo) menu.classList.add('ativo');
+        }
+
+        function selecionarOpcao(id, icone, idTexto) {
+            const textoPersonalizado = document.getElementById(idTexto).innerText;
+            document.getElementById(`btn_status_${id}`).innerText = `${icone} ${textoPersonalizado}`;
+            document.getElementById(`menu_${id}`).classList.remove('ativo');
+        }
+
+        function adicionarLinha() {
+            const novoId = Date.now(); // ID único baseado no tempo para evitar conflitos ao deletar
+            criarEstruturaLinha(novoId);
+            window.scrollTo(0, document.body.scrollHeight);
+        }
+
+        function salvarDados() {
+            const linhas = listaEl.querySelectorAll('.linha');
+            const dados = { titulo: tituloEl.innerText, ids: [] };
+            
+            linhas.forEach(linha => {
+                const id = linha.id.replace('bloco_', '');
+                dados.ids.push(id);
+                dados[`texto_${id}`] = document.getElementById(`texto_${id}`).innerText;
+                dados[`status_${id}`] = document.getElementById(`btn_status_${id}`).innerText;
+                dados[`op1_${id}`] = document.getElementById(`op1_${id}`).innerText;
+                dados[`op2_${id}`] = document.getElementById(`op2_${id}`).innerText;
+                dados[`op3_${id}`] = document.getElementById(`op3_${id}`).innerText;
+            });
+
+            localStorage.setItem('digitalSuporte_v5', JSON.stringify(dados));
+        }
+
+        function carregarDados() {
+            const salvos = JSON.parse(localStorage.getItem('digitalSuporte_v5'));
+            if (!salvos) {
+                for (let i = 1; i <= 10; i++) criarEstruturaLinha(i);
+                return;
+            }
+            tituloEl.innerText = salvos.titulo;
+            salvos.ids.forEach(id => {
+                criarEstruturaLinha(id, salvos[`texto_${id}`], salvos[`status_${id}`], salvos[`op1_${id}`], salvos[`op2_${id}`], salvos[`op3_${id}`]);
+            });
+        }
+
+        function enviarWhatsApp() {
+            let msg = `*📌 ${tituloEl.innerText.toUpperCase()}*\n\n`;
+            const linhas = listaEl.querySelectorAll('.linha');
+            linhas.forEach(linha => {
+                const id = linha.id.replace('bloco_', '');
+                const txt = document.getElementById(`texto_${id}`).innerText.trim();
+                const st = document.getElementById(`btn_status_${id}`).innerText;
+                if(txt) msg += `▪️ ${txt}: *${st}*\n`;
+            });
+            window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
+        }
+
+        function limparTudo() {
+            if(confirm("Deseja apagar tudo e resetar para 10 linhas?")) { 
+                localStorage.removeItem('digitalSuporte_v5'); 
+                location.reload(); 
+            }
+        }
+
+        document.addEventListener('click', function(e) {
+            if (!e.target.classList.contains('status-btn') && !e.target.closest('.menu-status')) {
+                document.querySelectorAll('.menu-status').forEach(m => m.classList.remove('ativo'));
+            }
+        });
+
+        carregarDados();
+    </script>
+</body>
+</html>
